@@ -25,14 +25,7 @@ const initializeDBAndServer = async () => {
 };
 initializeDBAndServer();
 
-const loggerMiddleWareFunction = (request, response, next) => {
-  console.log(request.query);
-  next();
-};
-
-//Get Books API
-app.get("/books/", loggerMiddleWareFunction, (request, response) => {
-  console.log("inside handler function");
+const authenticateTokenMiddlewareFunction = (request, response, next) => {
   let jwtToken;
   const authHeader = request.headers["authorization"];
   if (authHeader !== undefined) {
@@ -46,24 +39,36 @@ app.get("/books/", loggerMiddleWareFunction, (request, response) => {
       if (error) {
         response.send("Invalid Access Token");
       } else {
-        const getBooksQuery = `
+        next();
+      }
+    });
+  }
+};
+
+//Get Books API
+app.get(
+  "/books/",
+  authenticateTokenMiddlewareFunction,
+  async (request, response) => {
+    const getBooksQuery = `
             SELECT
               *
             FROM
              book
             ORDER BY
              book_id;`;
-        const booksArray = await db.all(getBooksQuery);
-        response.send(booksArray);
-      }
-    });
+    const booksArray = await db.all(getBooksQuery);
+    response.send(booksArray);
   }
-});
+);
 
 //Get Book API
-app.get("/books/:bookId/", async (request, response) => {
-  const { bookId } = request.params;
-  const getBookQuery = `
+app.get(
+  "/books/:bookId/",
+  authenticateTokenMiddlewareFunction,
+  async (request, response) => {
+    const { bookId } = request.params;
+    const getBookQuery = `
       SELECT
        *
       FROM
@@ -71,18 +76,22 @@ app.get("/books/:bookId/", async (request, response) => {
       WHERE
        book_id = ${bookId};
     `;
-  const book = await db.get(getBookQuery);
-  response.send(book);
-});
+    const book = await db.get(getBookQuery);
+    response.send(book);
+  }
+);
 
 //User Register API
-app.post("/users/", async (request, response) => {
-  const { username, name, password, gender, location } = request.body;
-  const hashedPassword = await bcrypt.hash(request.body.password, 10);
-  const selectUserQuery = `SELECT * FROM user WHERE username = '${username}'`;
-  const dbUser = await db.get(selectUserQuery);
-  if (dbUser === undefined) {
-    const createUserQuery = `
+app.post(
+  "/users/",
+  authenticateTokenMiddlewareFunction,
+  async (request, response) => {
+    const { username, name, password, gender, location } = request.body;
+    const hashedPassword = await bcrypt.hash(request.body.password, 10);
+    const selectUserQuery = `SELECT * FROM user WHERE username = '${username}'`;
+    const dbUser = await db.get(selectUserQuery);
+    if (dbUser === undefined) {
+      const createUserQuery = `
       INSERT INTO 
         user (username, name, password, gender, location) 
       VALUES 
@@ -93,33 +102,38 @@ app.post("/users/", async (request, response) => {
           '${gender}',
           '${location}'
         )`;
-    await db.run(createUserQuery);
-    response.send(`User created successfully`);
-  } else {
-    response.status(400);
-    response.send("User already exists");
-  }
-});
-
-//User Login API
-app.post("/login/", async (request, response) => {
-  const { username, password } = request.body;
-  const selectUserQuery = `SELECT * FROM user WHERE username = '${username}'`;
-  const dbUser = await db.get(selectUserQuery);
-  if (dbUser === undefined) {
-    response.status(400);
-    response.send("Invalid User");
-  } else {
-    const isPasswordMatched = await bcrypt.compare(password, dbUser.password);
-    if (isPasswordMatched === true) {
-      const payload = {
-        username: username,
-      };
-      const jwtToken = jwt.sign(payload, "MY_SECRET_TOKEN");
-      response.send({ jwtToken });
+      await db.run(createUserQuery);
+      response.send(`User created successfully`);
     } else {
       response.status(400);
-      response.send("Invalid Password");
+      response.send("User already exists");
     }
   }
-});
+);
+
+//User Login API
+app.post(
+  "/login/",
+  authenticateTokenMiddlewareFunction,
+  async (request, response) => {
+    const { username, password } = request.body;
+    const selectUserQuery = `SELECT * FROM user WHERE username = '${username}'`;
+    const dbUser = await db.get(selectUserQuery);
+    if (dbUser === undefined) {
+      response.status(400);
+      response.send("Invalid User");
+    } else {
+      const isPasswordMatched = await bcrypt.compare(password, dbUser.password);
+      if (isPasswordMatched === true) {
+        const payload = {
+          username: username,
+        };
+        const jwtToken = jwt.sign(payload, "MY_SECRET_TOKEN");
+        response.send({ jwtToken });
+      } else {
+        response.status(400);
+        response.send("Invalid Password");
+      }
+    }
+  }
+);
