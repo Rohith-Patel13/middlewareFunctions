@@ -39,6 +39,8 @@ const authenticateTokenMiddlewareFunction = (request, response, next) => {
       if (error) {
         response.send("Invalid Access Token");
       } else {
+        request.username = payload.username;
+        //console.log(request.username);
         next();
       }
     });
@@ -135,5 +137,17 @@ app.post(
         response.send("Invalid Password");
       }
     }
+  }
+);
+
+//API user details:
+app.get(
+  "/profile/",
+  authenticateTokenMiddlewareFunction,
+  async (request, response) => {
+    let { username } = request;
+    const userQuery = `SELECT * FROM user WHERE username='${username}';`;
+    const dbResponse = await db.get(userQuery);
+    response.send(dbResponse);
   }
 );
